@@ -58,17 +58,26 @@ def read_objfile(fname):
     with open(fname) as f:
         lines = f.read().splitlines()
 
-    if 'OBJ' not in lines[0]:
-        raise ValueError("File not .obj-formatted.")
-
+    # if 'OBJ' not in lines[0]:
+    #     raise ValueError("File not .obj-formatted.")
+    current_mtl = {}
     for line in lines:
         if line:
             prefix, value = line.split(' ', 1)
-            if prefix == 'o':
+            if prefix in ['mtllib', 'usemtl']:
+                current_mtl[prefix] = value
+            if prefix == 'o' or (prefix == 'v' and len(obj_props) < 1): # in case there is single mesh and no 'o' line
                 obj_props.append({})
                 obj = obj_props[-1]
                 obj['f'] = []
-                obj[prefix] = value
+                obj['o'] = 'Unknown Object' if prefix == 'v' else value
+                if 'mtllib' in current_mtl:
+                    obj['mtllib'] = current_mtl['mtllib']
+                    del current_mtl['mtllib']
+                if 'usemtl' in current_mtl:
+                    obj['usemtl'] = current_mtl['usemtl']
+                    del current_mtl['usemtl']
+
             if obj_props:
                 if prefix[0] == 'v':
                     verts[prefix].append([float(val) for val in value.split(' ')])
@@ -79,16 +88,18 @@ def read_objfile(fname):
 
 
     # Reindex vertices to be in face index order, then remove face indices.
-    verts = {key: np.array(value) for key, value in iteritems(verts)}
-    for obj in obj_props:
-        obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
-        for idx, vertname in enumerate(['v' ,'vt', 'vn']):
-            if vertname in verts:
-                obj[vertname] = verts[vertname][obj['f'][idx].flatten() - 1, :]
-            else:
-                obj[vertname] = tuple()
-        del obj['f']
+    # verts = {key: np.array(value) for key, value in iteritems(verts)}
+    # for obj in obj_props:
+    #     obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
+    #     for idx, vertname in enumerate(['v' ,'vt', 'vn']):
+    #         if vertname in verts:
+    #             obj[vertname] = verts[vertname][obj['f'][idx].flatten() - 1, :]
+    #         else:
+    #             obj[vertname] = tuple()
+    #     del obj['f']
 
+    obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
+    obj['verts'] = verts
     geoms = {obj['o']:obj for obj in obj_props}
 
     return geoms
@@ -102,9 +113,12 @@ def read_mtlfile(fname):
     for line in lines:
         if line:
             prefix, data = line.split(' ', 1)
+            data = data.strip()
             if 'newmtl' in prefix:
                 material = {}
                 materials[data] = material
+            elif 'map' in prefix:
+                materials[prefix] = data
             elif materials:
                 if len(data.split(' ')) > 1:
                     material[prefix] = tuple(float(d) for d in data.split(' '))
