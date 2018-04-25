@@ -15,6 +15,7 @@ def parse_mixed_delim_str(line):
     return [tuple(arr) for arr in arrs]
 
 
+#Deprecated: Would be overwritten by another read_objfile() below
 def read_objfile(f):
     """Takes .obj file and returns dict of object properties for each object in file."""
     verts = defaultdict(list)
@@ -61,8 +62,9 @@ def read_objfile(fname):
     # if 'OBJ' not in lines[0]:
     #     raise ValueError("File not .obj-formatted.")
     current_mtl = {}
-    for line in lines:
-        if line:
+    for l in lines:
+        line = l.strip()
+        if line and (line[0] != '#'): # skip comments
             prefix, value = line.split(' ', 1)
             if prefix in ['mtllib', 'usemtl']:
                 current_mtl[prefix] = value
@@ -88,17 +90,17 @@ def read_objfile(fname):
 
 
     # Reindex vertices to be in face index order, then remove face indices.
-    # verts = {key: np.array(value) for key, value in iteritems(verts)}
-    # for obj in obj_props:
-    #     obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
-    #     for idx, vertname in enumerate(['v' ,'vt', 'vn']):
-    #         if vertname in verts:
-    #             obj[vertname] = verts[vertname][obj['f'][idx].flatten() - 1, :]
-    #         else:
-    #             obj[vertname] = tuple()
+    verts = {key: np.array(value) for key, value in iteritems(verts)}
+    for obj in obj_props:
+        obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
+        for idx, vertname in enumerate(['v' ,'vt', 'vn']):
+            if vertname in verts:
+                obj[vertname+'_reindex'] = verts[vertname][obj['f'][idx].flatten() - 1, :]
+            else:
+                obj[vertname] = tuple()
     #     del obj['f']
 
-    obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
+    # obj['f'] = tuple(np.array(verts) if verts[0] else tuple() for verts in zip(*obj['f']))
     obj['verts'] = verts
     geoms = {obj['o']:obj for obj in obj_props}
 
@@ -135,8 +137,9 @@ def read_wavefront(fname_obj):
     """Returns mesh dictionary along with their material dictionary from a wavefront (.obj and/or .mtl) file."""
     fname_mtl = ''
     geoms = read_objfile(fname_obj)
-    for line in open(fname_obj):
-        if line.strip():
+    for l in open(fname_obj):
+        line = l.strip()
+        if line and (line[0] != '#'):
             prefix, data = line.strip().split(' ', 1)
             if 'mtllib' in prefix:
                 fname_mtl = data
